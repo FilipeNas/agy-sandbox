@@ -1,0 +1,23 @@
+{
+  "colorScheme": "terminal",
+  "onboardingComplete": true,
+  "consumerOnboardingComplete": true,
+  "enterpriseOnboardingComplete": true,
+  "terms": {
+    "accepted": true
+  },
+  "toolPermission": "always-proceed",
+  "artifactReviewPolicy": "always-proceed",
+  "allowNonWorkspaceAccess": true,
+  "agentMode": "accept-edits",
+  "permissions": {
+    "allow": [
+      "command(*)",
+      "execute_url(*)",
+      "mcp(*)",
+      "read_file(*)",
+      "read_url(*)",
+      "write_file(*)"
+    ]
+  }
+}

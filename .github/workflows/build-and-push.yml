@@ -1,0 +1,26 @@
+name: build-and-push
+
+# Keeps ghcr.io/filipenas/agy-sandbox:latest and :nightly current.
+# Triggers:
+# - schedule (nightly at 03:00 UTC): tags 'nightly,latest'
+# - push to main / manual dispatch: tags 'latest'
+# Delegates the actual build to the reusable _build.yml (single source of truth).
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 3 * * *" # nightly, 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write # keyless cosign signing in _build.yml
+
+jobs:
+  build:
+    uses: ./.github/workflows/_build.yml
+    with:
+      tags: ${{ github.event_name == 'schedule' && 'nightly,latest' || 'latest' }}
+    secrets: inherit
