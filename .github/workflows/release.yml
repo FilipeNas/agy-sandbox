@@ -1,32 +1,28 @@
 name: release
 
-# Manual, main-only release. Tags by calendar day plus a per-day counter
-# (e.g. 2026-08-04.1, then 2026-08-04.2 …) so multiple releases in one day don't
-# collide. Run from the Actions tab (workflow_dispatch) when you're comfortable
-# with main. It:
-#   1. builds & pushes the image AND kit tagged <date>.<n> AND overwrites :latest
-#      (reuses _build.yml) — so releasing after the latest commit, before the
-#      nightly run, updates :latest too,
-#   2. creates the git tag <date>.<n> and a GitHub Release via the gh CLI.
-#
-# All build/push logic lives in the reusable _build.yml (single source of truth).
-# The GitHub Release is created with the official gh CLI — no third-party actions.
+# Manual, main-only release: allocate <UTC date>.<counter>, publish and sign
+# that tag plus latest through _build.yml, then create the GitHub release.
+# Concurrency serializes the entire chain so version allocation cannot race.
 
 on:
   workflow_dispatch:
 
+concurrency:
+  group: agy-sandbox-release
+  cancel-in-progress: false
+
 permissions:
   contents: write # create the tag + GitHub Release
-  packages: write # push image + kit to GHCR
-  id-token: write # keyless cosign signing in _build.yml
+  packages: write # push workload kit to GHCR
+  id-token: write # keyless sbx signing in _build.yml
 
 env:
   IMAGE: ghcr.io/filipenas/agy-sandbox
-  KIT: ghcr.io/filipenas/agy-sandbox-kit
 
 jobs:
   version:
-    if: github.ref_name == 'main'
+    name: Allocate release version
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04-arm
     outputs:
       version: ${{ steps.v.outputs.version }}
@@ -39,36 +35,36 @@ jobs:
           set -euo pipefail
           date="$(date -u +%F)"
           # Highest existing counter for today's date across published releases.
-          max="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 \
-                   --json tagName --jq '.[].tagName' \
-                 | grep -E "^${date}\.[0-9]+$" \
-                 | sed -E "s/^${date}\.//" | sort -n | tail -1 || true)"
-          n=$(( ${max:-0} + 1 ))
-          echo "version=${date}.${n}" >> "$GITHUB_OUTPUT"
-          echo "Next release tag: ${date}.${n}"
+          releases="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName)"
+          max="$(jq --arg prefix "${date}." '[.[].tagName | select(startswith($prefix)) |
+            ltrimstr($prefix) | select(test("^[0-9]+$")) | tonumber] | max // 0' <<< "$releases")"
+          counter=$(( max + 1 ))
+          echo "version=${date}.${counter}" >> "$GITHUB_OUTPUT"
+          echo "Next release tag: ${date}.${counter}"
 
-  # Build + push image AND kit at <version> and :latest via the shared workflow.
   publish:
+    name: Publish release kit
     needs: version
     uses: ./.github/workflows/_build.yml
     with:
       tags: ${{ needs.version.outputs.version }},latest
     secrets: inherit
 
-  # Cut the git tag + GitHub Release with the official gh CLI.
   release:
+    name: Create GitHub release
     needs: [version, publish]
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Create tag ${{ needs.version.outputs.version }} + GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          notes="$(printf '**Image:** `%s:%s`\n**Kit:** `%s:%s`' \
-            "$IMAGE" "$VERSION" "$KIT" "$VERSION")"
+          set -euo pipefail
+          notes="**Workload kit:** \`${IMAGE}:${VERSION}\`"
           gh release create "$VERSION" \
             --target "$GITHUB_SHA" \
             --title "$VERSION" \

@@ -1,11 +1,11 @@
 # syntax=docker/sandbox-kit:3
 schemaVersion: '3'
 displayName: agy-sandbox
-description: Docker Sandbox for Google Antigravity CLI (agy)
+description: Docker Sandbox workload kit for Google Antigravity CLI (agy)
 author: Filipe Nascimento <piposantos1@hotmail.com>
 
 kind: workload
-version: 0.1.0
+version: 0.1.1
 
 provides:
   - agy

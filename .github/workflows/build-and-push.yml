@@ -16,10 +16,12 @@ on:
 permissions:
   contents: read
   packages: write
-  id-token: write # keyless cosign signing in _build.yml
+  id-token: write # keyless sbx signing in _build.yml
 
 jobs:
   build:
+    name: Publish latest or nightly
+    if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/_build.yml
     with:
       tags: ${{ github.event_name == 'schedule' && 'nightly,latest' || 'latest' }}

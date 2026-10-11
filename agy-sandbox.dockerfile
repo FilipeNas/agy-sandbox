@@ -55,12 +55,12 @@ FROM system AS pytools
 USER agent
 ARG TARGETARCH
 RUN --mount=type=cache,id=uv-${TARGETARCH},target=/home/agent/.cache/uv,uid=1000,gid=1000 \
-    for t in isort ruff pre-commit; do uv tool install "$t"; done
+    set -e; for tool in isort ruff pre-commit; do uv tool install "$tool"; done
 
 # ── agy: Antigravity CLI ──────────────────────────────────────────────────────
 FROM system AS agy
 USER agent
-RUN curl -fsSL https://antigravity.google/cli/install.sh | bash
+RUN bash -o pipefail -c 'curl -fsSL https://antigravity.google/cli/install.sh | bash'
 
 # ── final ─────────────────────────────────────────────────────────────────────
 FROM system AS final
@@ -69,7 +69,7 @@ COPY --from=pytools --chown=agent:agent /home/agent/.local             /home/age
 COPY --from=agy     --chown=agent:agent /home/agent/.local/bin/agy     /home/agent/.local/bin/agy
 USER root
 RUN ln -sf /home/agent/.local/bin/agy /usr/local/bin/agy \
- && /home/linuxbrew/.linuxbrew/bin/git-lfs install
+ && /home/linuxbrew/.linuxbrew/bin/git-lfs install --system
 USER agent
 ENV HOMEBREW_PREFIX=/home/linuxbrew/.linuxbrew
 ENV PATH="/home/agent/.krew/bin:\

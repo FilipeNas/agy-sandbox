@@ -1,28 +1,15 @@
 name: _build
 
-# Reusable build — the SINGLE SOURCE OF TRUTH for building and pushing BOTH the
-# multi-arch image AND the kit OCI artifact to GHCR. build-and-push.yml
-# (main/nightly) and release.yml (dated) call this via `workflow_call`.
-#
-#   image:  ghcr.io/filipenas/agy-sandbox
-#   kit:    ghcr.io/filipenas/agy-sandbox-kit
-#
-# Every tag in `inputs.tags` (comma-separated) is applied to both, overwriting.
-# The image builds on each arch's OWN native runner (no QEMU); a merge job
-# stitches the per-arch digests into one manifest list.
-#
-# GitHub Actions cache (type=gha, per-arch scope) — no setup, GITHUB_TOKEN grants it.
-# Actions are pinned to a commit SHA with the human-readable version in a comment.
-#
-# Signing: the merge job signs the index digest keyless with cosign (Sigstore
-# Fulcio + Rekor, identity from the GitHub OIDC token). Callers MUST grant
-# `id-token: write` — a reusable workflow cannot exceed its caller's permissions.
+# Shared publisher for build-and-push.yml and release.yml.
+# Native builds -> image tests -> dependency reports -> merge -> sign and verify.
+# Publishes one workload kit: ghcr.io/filipenas/agy-sandbox.
+# Callers must grant id-token: write for native sbx keyless signing.
 
 on:
   workflow_call:
     inputs:
       tags:
-        description: "Comma-separated tags for image + kit, e.g. 'latest' or '2026-08-04.1,latest'"
+        description: "Comma-separated workload kit tags, e.g. 'latest' or '2026-08-04.1,latest'"
         required: true
         type: string
 
@@ -32,10 +19,11 @@ permissions:
 
 env:
   IMAGE: ghcr.io/filipenas/agy-sandbox
-  KIT: ghcr.io/filipenas/agy-sandbox-kit
+  TRIVY_VERSION: v0.75.0
 
 jobs:
   build:
+    name: Build and test ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
@@ -46,9 +34,14 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Lint test scripts
+        run: shellcheck tests/*.sh
 
       - name: Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -63,7 +56,7 @@ jobs:
 
       - name: Build and push by digest
         id: build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: agy-sandbox.yaml
@@ -72,6 +65,77 @@ jobs:
           cache-from: type=gha,scope=${{ steps.plat.outputs.name }}
           cache-to: type=gha,mode=max,scope=${{ steps.plat.outputs.name }}
 
+      - name: Test native image and kit metadata
+        env:
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          ref="${IMAGE}@${BUILD_DIGEST}"
+          architecture="${PLATFORM#linux/}"
+          docker buildx imagetools inspect "$ref" --raw > "$RUNNER_TEMP/native-manifest.json"
+          if jq -e 'has("manifests")' "$RUNNER_TEMP/native-manifest.json" > /dev/null; then
+            digest="$(jq -er --arg arch "$architecture" '[.manifests[] |
+              select(.platform.os == "linux" and .platform.architecture == $arch)] |
+              if length == 1 then .[0].digest else error("expected one native manifest") end' \
+              "$RUNNER_TEMP/native-manifest.json")"
+            docker buildx imagetools inspect "${IMAGE}@${digest}" --raw > "$RUNNER_TEMP/native-manifest.json"
+          fi
+          jq -e '.annotations["vnd.docker.sandbox.kit.descriptor"] | fromjson |
+            .kind == "workload" and .schemaVersion == "3" and
+            (.provides | index("agy") != null) and
+            ([.capabilities[].type] | contains([
+              "com.docker.sandbox/agent-context@1", "com.docker.sandbox/credential@1",
+              "com.docker.sandbox/lifecycle@1", "com.docker.sandbox/network-policy@1"
+            ]))' "$RUNNER_TEMP/native-manifest.json" > /dev/null
+          docker pull --platform "$PLATFORM" "$ref"
+          test "$(docker image inspect "$ref" --format '{{.Architecture}}')" = "$architecture"
+          bash tests/image.sh "$ref"
+
+      - name: Prepare dependency reports
+        env:
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p scan-results
+          printf '%s\n' "${IMAGE}@${BUILD_DIGEST}" > scan-results/image.txt
+
+      - name: Scan native image dependencies
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: ${{ matrix.platform }}
+          TRIVY_IMAGE_SRC: remote
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          scanners: vuln
+          format: json
+          output: scan-results/vulnerabilities.json
+          exit-code: '0'
+          timeout: 15m
+
+      - name: Generate native image SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: ${{ matrix.platform }}
+          TRIVY_IMAGE_SRC: remote
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          skip-setup-trivy: 'true'
+          image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          format: cyclonedx
+          output: scan-results/sbom.cdx.json
+          exit-code: '0'
+          timeout: 15m
+
+      - name: Upload dependency reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dependency-reports-${{ steps.plat.outputs.name }}
+          path: scan-results/
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Export digest
         run: |
           mkdir -p /tmp/digests
@@ -79,7 +143,7 @@ jobs:
           touch "/tmp/digests/${digest#sha256:}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: digests-${{ steps.plat.outputs.name }}
           path: /tmp/digests/*
@@ -87,23 +151,42 @@ jobs:
           retention-days: 1
 
   merge:
+    name: Publish and sign multi-platform kit
     needs: build
     runs-on: ubuntu-24.04-arm
+    concurrency:
+      group: agy-sandbox-publish
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: write
-      id-token: write # keyless cosign: OIDC token -> Fulcio certificate
+      id-token: write # keyless sbx signing: OIDC token -> Fulcio certificate
     steps:
       - name: Download digests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: /tmp/digests
           pattern: digests-*
           merge-multiple: true
 
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Install sbx CLI
+        env:
+          SBX_VERSION: v0.47.0
+          SBX_SHA256: 6a3c45df52ff32722bb33e4d2c66f9920e284b9a3adeba17afcfcea3ad346eff
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 \
+            "https://github.com/docker/sbx-releases/releases/download/${SBX_VERSION}/DockerSandboxes-linux-arm64.tar.gz" \
+            -o "$RUNNER_TEMP/sbx.tar.gz"
+          printf '%s  %s\n' "$SBX_SHA256" "$RUNNER_TEMP/sbx.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/sbx-bin"
+          tar -xzf "$RUNNER_TEMP/sbx.tar.gz" --strip-components=1 \
+            -C "$RUNNER_TEMP/sbx-bin" docker-sbx/sbx
+          echo "$RUNNER_TEMP/sbx-bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/sbx-bin/sbx" version
 
       - name: Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -113,49 +196,46 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create manifest list and push (applies every tag, overwriting)
+        id: index
         working-directory: /tmp/digests
+        env:
+          PUBLISH_TAGS: ${{ inputs.tags }}
         run: |
           set -euo pipefail
           args=()
-          IFS=',' read -ra TAGS <<< "${{ inputs.tags }}"
-          for t in "${TAGS[@]}"; do
-            t="$(echo "$t" | xargs)"   # trim whitespace
-            [ -n "$t" ] && args+=(-t "${IMAGE}:${t}" -t "${KIT}:${t}")
+          IFS=',' read -ra tags <<< "$PUBLISH_TAGS"
+          for tag in "${tags[@]}"; do
+            tag="$(echo "$tag" | xargs)"
+            [ -n "$tag" ] && args+=(-t "${IMAGE}:${tag}")
           done
-          docker buildx imagetools create "${args[@]}" \
-            $(printf "${IMAGE}@sha256:%s " *)
-
-      - name: Resolve index digest
-        id: index
-        run: |
-          set -euo pipefail
-          first="$(echo "${{ inputs.tags }}" | cut -d, -f1 | xargs)"
-          docker buildx imagetools inspect "${IMAGE}:${first}"
-          digest="$(docker buildx imagetools inspect "${IMAGE}:${first}" \
-                      --format '{{json .Manifest}}' | jq -r .digest)"
+          test "${#args[@]}" -gt 0
+          sources=()
+          for digest_file in *; do
+            sources+=("${IMAGE}@sha256:${digest_file}")
+          done
+          docker buildx imagetools create --metadata-file "$RUNNER_TEMP/kit-index.json" "${args[@]}" \
+            "${sources[@]}"
+          digest="$(jq -er '."containerimage.descriptor".digest' "$RUNNER_TEMP/kit-index.json")"
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
           echo "Index digest: ${digest}"
 
-      # Sign the DIGEST, never a tag (tags move). Image and kit share one index,
-      # but signatures live per repository, so sign both. --recursive also signs
-      # each per-platform manifest, so verifying a platform digest works too.
-      # Identity = this reusable workflow (_build.yml) at the caller's ref.
-      - name: Sign image + kit (keyless)
+      - name: Sign and verify workload kit with sbx
         env:
-          DIGEST: ${{ steps.index.outputs.digest }}
+          INDEX_DIGEST: ${{ steps.index.outputs.digest }}
+          CERTIFICATE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/_build.yml@${{ github.ref }}
         run: |
           set -euo pipefail
-          cosign sign --yes --recursive "${IMAGE}@${DIGEST}" "${KIT}@${DIGEST}"
-
-      - name: Verify signature
-        env:
-          DIGEST: ${{ steps.index.outputs.digest }}
-        run: |
-          set -euo pipefail
-          for ref in "${IMAGE}@${DIGEST}" "${KIT}@${DIGEST}"; do
-            cosign verify "$ref" \
-              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/_build.yml@${{ github.ref }}" \
-              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-              > /dev/null
+          docker buildx imagetools inspect "${IMAGE}@${INDEX_DIGEST}" --raw > "$RUNNER_TEMP/kit-index-manifest.json"
+          jq -er '.manifests[] | select(.platform.os == "linux" and
+            (.platform.architecture == "amd64" or .platform.architecture == "arm64")) | .digest' \
+            "$RUNNER_TEMP/kit-index-manifest.json" > "$RUNNER_TEMP/kit-signing-digests"
+          test "$(wc -l < "$RUNNER_TEMP/kit-signing-digests")" -eq 2
+          printf '%s\n' "$INDEX_DIGEST" >> "$RUNNER_TEMP/kit-signing-digests"
+          while IFS= read -r digest; do
+            ref="${IMAGE}@${digest}"
+            sbx kit sign "$ref"
+            sbx kit verify "$ref" \
+              --certificate-identity "$CERTIFICATE_IDENTITY" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com
             echo "verified: $ref"
-          done
+          done < "$RUNNER_TEMP/kit-signing-digests"

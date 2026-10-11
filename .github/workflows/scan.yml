@@ -1,0 +1,86 @@
+name: dependency-scan
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TRIVY_VERSION: v0.75.0
+
+jobs:
+  resolve:
+    name: Resolve published digest
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.image.outputs.ref }}
+    steps:
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Resolve latest to an immutable reference
+        id: image
+        run: |
+          set -euo pipefail
+          image=ghcr.io/filipenas/agy-sandbox
+          digest="$(docker buildx imagetools inspect "$image:latest" --format '{{json .Manifest}}' | jq -er '.digest')"
+          echo "ref=$image@$digest" >> "$GITHUB_OUTPUT"
+
+  scan:
+    name: Scan linux/${{ matrix.architecture }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [amd64, arm64]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Prepare dependency reports
+        env:
+          IMAGE_REF: ${{ needs.resolve.outputs.image }}
+        run: |
+          mkdir -p scan-results
+          printf '%s\n' "$IMAGE_REF" > scan-results/image.txt
+
+      - name: Scan published platform
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: linux/${{ matrix.architecture }}
+          TRIVY_IMAGE_SRC: remote
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: ${{ needs.resolve.outputs.image }}
+          scanners: vuln
+          format: json
+          output: scan-results/vulnerabilities.json
+          exit-code: '0'
+          timeout: 15m
+
+      - name: Generate published platform SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: linux/${{ matrix.architecture }}
+          TRIVY_IMAGE_SRC: remote
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          skip-setup-trivy: 'true'
+          image-ref: ${{ needs.resolve.outputs.image }}
+          format: cyclonedx
+          output: scan-results/sbom.cdx.json
+          exit-code: '0'
+          timeout: 15m
+
+      - name: Upload reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dependency-reports-${{ matrix.architecture }}
+          path: scan-results/
+          if-no-files-found: warn
+          retention-days: 30

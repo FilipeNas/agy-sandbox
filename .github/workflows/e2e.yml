@@ -1,0 +1,75 @@
+name: end-to-end
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sandbox-e2e
+  cancel-in-progress: false
+
+jobs:
+  sandbox:
+    name: Test amd64 microVM
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Enable KVM access
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = x86_64
+          test -c /dev/kvm
+          printf '%s\n' 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo -n tee /etc/udev/rules.d/99-kvm4all.rules > /dev/null
+          sudo -n udevadm control --reload-rules
+          sudo -n udevadm trigger --name-match=kvm
+          test -r /dev/kvm
+          test -w /dev/kvm
+
+      - name: Install full Docker Sandboxes runtime
+        env:
+          SBX_VERSION: v0.47.0
+          SBX_SHA256: a89cb4380075ebb20938103bc98ec63327fbeabe43a71f0575ddb285a051eab4
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 \
+            "https://github.com/docker/sbx-releases/releases/download/${SBX_VERSION}/DockerSandboxes-linux-amd64.tar.gz" \
+            -o "$RUNNER_TEMP/sbx.tar.gz"
+          printf '%s  %s\n' "$SBX_SHA256" "$RUNNER_TEMP/sbx.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/sbx-runtime"
+          tar -xzf "$RUNNER_TEMP/sbx.tar.gz" -C "$RUNNER_TEMP/sbx-runtime"
+          sudo -n env PREFIX=/usr/local bash "$RUNNER_TEMP/sbx-runtime/docker-sbx/install.sh"
+          echo /usr/local/bin >> "$GITHUB_PATH"
+
+      - name: Check runner prerequisites
+        run: |
+          set -euo pipefail
+          sbx version
+          docker info > /dev/null
+          shellcheck tests/e2e.sh
+
+      - name: Authenticate Docker Sandboxes
+        id: login
+        env:
+          DOCKER_USERNAME: ${{ vars.DOCKER_USERNAME }}
+          DOCKER_PAT: ${{ secrets.DOCKER_PAT }}
+        run: |
+          set -euo pipefail
+          test -n "$DOCKER_USERNAME"
+          test -n "$DOCKER_PAT"
+          printf '%s' "$DOCKER_PAT" | sbx login --username "$DOCKER_USERNAME" --password-stdin
+
+      - name: Test current workload kit
+        run: bash tests/e2e.sh
+
+      - name: Sign out on ephemeral runner
+        if: ${{ always() && steps.login.outcome == 'success' }}
+        run: sbx logout --yes

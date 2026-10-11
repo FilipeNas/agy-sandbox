@@ -1,4 +1,4 @@
-# agy-sandbox Agent Context
+# agy-sandbox Workload Kit Agent Context
 
 ## Environment
 
@@ -8,7 +8,7 @@ You are operating inside an isolated Docker Sandbox microVM (Ubuntu 26.04) runni
 
 - **Direct Mode**: The workspace is a bind mount of the developer's host directory. Edits and deletions modify the actual files on the host machine in real time.
 - **Clone Mode (`--clone`)**: The workspace is an in-container Git clone. Any changes stay inside this clone until fetched or pushed. The original host repository is mounted read-only at `/run/sandbox/source`.
-- **Mountless Mode**: If no host path was supplied at creation time, the agent operates entirely within the container's isolated filesystem at `/home/agent/workspace`.
+- **Mountless Mode**: A sandbox created with `sbx create` without a workspace path operates within the container's isolated filesystem at `/home/agent/workspace`. Creating one with `sbx run` without a path instead mounts the host's current directory read-write.
 
 Everything outside mounted workspace paths is VM-local and ephemeral (destroyed when the sandbox is removed).
 
@@ -23,7 +23,7 @@ Everything outside mounted workspace paths is VM-local and ephemeral (destroyed 
 
 All developer tools are pre-baked into the image for zero installation latency. The shell environment is configured via `BASH_ENV=/etc/sandbox-persistent.sh`, guaranteeing that all binary paths are exported in both interactive shells and automated subshell tool calls:
 
-- **Version Control & GitHub**: `git`, `git-lfs`, GitHub CLI (`gh`).
+- **Version Control & GitHub**: `git`, `git-lfs` (filters configured system-wide, including for `agent`), GitHub CLI (`gh`).
 - **Kubernetes**: `kubectl` (aliased to `kubecolor` interactively), `kubectx`, `krew` (`~/.krew/bin` in PATH), `kustomize`, `helm`, `stern`.
 - **Infrastructure as Code (IaC)**: OpenTofu (`tofu`), Terragrunt (`terragrunt`), `tflint`, `terraform-docs`.
 - **Cloud & Databases**: AWS CLI v2 (`aws`), `awscurl`, `awsdac`, `docker-credential-helper-ecr`, `pgcli`, MySQL client (`mysql`).

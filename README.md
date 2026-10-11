@@ -1,8 +1,8 @@
 # agy-sandbox
 
-A [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/) Kit (v3) packaging Google's **Antigravity CLI (`agy`)** inside a hardware-virtualized microVM.
+A [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/) **workload kit (v3)** packaging Google's **Antigravity CLI (`agy`)** inside a hardware-virtualized microVM.
 
-Pre-bakes a comprehensive DevOps environment (Kubernetes, OpenTofu, AWS CLI, `pgcli`, `uv`, shell utilities) directly into the image for sub-second startup times without runtime installation latency.
+Includes Kubernetes, OpenTofu, AWS CLI, `pgcli`, `uv`, and shell utilities; no runtime tool installation required.
 
 > [!NOTE]
 > Inspired by Oleg Šelajev's [agy-sbx-kit](https://github.com/shelajev/agy-sbx-kit).
@@ -95,11 +95,14 @@ sbx run --clone ghcr.io/filipenas/agy-sandbox:latest --name agy-sandbox https://
 
 #### Mountless Mode
 
-Omitting workspace paths creates a sandbox operating entirely within the container's isolated root filesystem at `WORKDIR` (`/home/agent/workspace`). No host directories are exposed:
+Create a new sandbox with `sbx create` and omit workspace paths, then attach by name. The sandbox operates at `WORKDIR` (`/home/agent/workspace`) without a host workspace bind mount:
 
 ```bash
-sbx run ghcr.io/filipenas/agy-sandbox:latest --name agy-sandbox
+sbx create ghcr.io/filipenas/agy-sandbox:latest --name filipe-sbx
+sbx run --name filipe-sbx
 ```
+
+Omitting the path from `sbx run` when creating a sandbox instead mounts the current directory read-write. Use a new name for a mountless sandbox; attaching to an existing sandbox does not change its mounts.
 
 #### Multiple Workspaces
 
@@ -157,7 +160,7 @@ To test local modifications in a sandbox without publishing to a remote registry
 sbx run /path/to/agy-sandbox --name agy-dev .
 
 # Or build locally to validate syntax and compilation
-docker buildx build -f agy-sandbox.yaml -t agy-sandbox:dev .
+docker buildx build -f agy-sandbox.yaml -t agy-sandbox:dev --load .
 ```
 
 `sbx` resolves the local kit files (`agy-sandbox.yaml`, `agy-sandbox.dockerfile`) and triggers an automatic local BuildKit compilation.
@@ -176,19 +179,74 @@ docker buildx history logs <build-id>
 
 ---
 
+## Tests
+
+### Workflow Map
+
+| Workflow | Trigger | Role |
+| --- | --- | --- |
+| [test.yml](.github/workflows/test.yml) | Pull request or manual | Lint scripts, build and smoke-test both native architectures; no publication |
+| [build-and-push.yml](.github/workflows/build-and-push.yml) | Push to `main`, nightly 03:00 UTC, or manual on `main` | Call the shared publisher for `latest` or `nightly,latest` |
+| [_build.yml](.github/workflows/_build.yml) | Reusable workflow call | Build, smoke-test and scan both architectures; merge, sign and verify before reporting success |
+| [release.yml](.github/workflows/release.yml) | Manual on `main` | Allocate a dated version, await the shared publisher, then create the GitHub release |
+| [scan.yml](.github/workflows/scan.yml) | Daily 07:00 UTC or manual | Resolve `latest` once; rescan both platforms without publishing |
+| [e2e.yml](.github/workflows/e2e.yml) | Manual on `main` | Test mounted and mountless amd64 microVMs; independent of publication |
+
+### Image Tests
+
+Pull requests build and test on native amd64 and arm64 runners without publishing. Publishing builds run the same tests against their pushed digest before updating tags, plus checks for the embedded OCI kit descriptor.
+
+```bash
+docker buildx build . -f agy-sandbox.yaml -t agy-sandbox:dev --load
+bash tests/image.sh agy-sandbox:dev
+```
+
+The offline smoke suite checks installed tools, CLI execution, shell setup, agent identity, launch configuration, Git LFS round-trips, bundled settings/context, and workspace-trust hook behavior (including idempotence and file permissions).
+
+Container tests do not cover microVM startup, nested Docker, or network enforcement; use the E2E suite for those. Google OAuth remains untested. Native signing verification runs during publication.
+
+### End-to-End
+
+```bash
+bash tests/e2e.sh
+```
+
+The suite builds the local kit and checks mounted/mountless workspaces, context injection, trust, host writes, nested Docker, and network policy. Commands are timeout-bounded; cleanup removes only its test sandboxes.
+
+For the manual **end-to-end** workflow on `main`, configure repository Actions credentials:
+
+- Variable `DOCKER_USERNAME`: your Docker ID.
+- Secret `DOCKER_PAT`: Docker PAT with at least Read scope.
+
+CI uses hosted amd64 with KVM and a checksum-pinned full sbx runtime; arm64 is covered by image tests only. Login follows [Docker's headless automation](https://docs.docker.com/ai/sandboxes/workflows/automation/), with logout afterwards. The Docker PAT does not authenticate Google, and no authenticated AI requests are made.
+
+E2E is independent of publication. The full suite remains unverified: local `sbx` v0.46.0 fails the injected-context check.
+
+### Dependency Scanning
+
+CI scans both platforms by immutable digest using SHA-pinned `aquasecurity/trivy-action` and an explicit CLI version. Scans run before publication and daily at 07:00 UTC or manually against resolved `latest`.
+
+Each platform's `dependency-reports-*` artifact contains:
+
+- `vulnerabilities.json`: findings, affected packages, and available fixes.
+- `sbom.cdx.json`: CycloneDX component inventory.
+- `image.txt`: the scanned immutable reference.
+
+Findings are report-only; scanner/database failures fail the job. Reports are retained for 30 days. Homebrew and standalone binaries such as `agy` may have incomplete coverage; findings do not establish exploitability or safety.
+
+Dependabot updates action SHAs weekly. Renovate groups sbx version/checksum updates and Trivy CLI versions, without duplicating Actions PRs. Neither automerges. Install the [Renovate GitHub App](https://github.com/apps/renovate) to activate it; other container digests still need explicit updates.
+
+---
+
 ## Signing & Verification
 
-Every image and kit published by CI is signed using **keyless** Sigstore signatures (Fulcio + Rekor), which are directly supported by `sbx kit` and interoperable with `cosign`:
+`ghcr.io/filipenas/agy-sandbox` is the workload kit image. Build via `agy-sandbox.yaml` to include the kit descriptor; no separate artifact is needed.
 
-1. The `merge` job in `_build.yml` receives a short-lived GitHub OIDC token (`id-token: write`).
-2. Sigstore's Fulcio issues an ephemeral signing certificate bound to the workflow identity: `https://github.com/FilipeNas/agy-sandbox/.github/workflows/_build.yml@refs/heads/main`.
-3. The signature is attached as an OCI referrer to the index manifest in GHCR and logged in Rekor.
-
-Both `agy-sandbox` and `agy-sandbox-kit` are signed. Signing changes neither the image digest nor the kit annotations.
+CI uses native `sbx kit sign` / `verify` with GitHub OIDC and Sigstore (Fulcio + Rekor). It signs and verifies the index and both platform manifests by digest, storing signatures as OCI referrers. The index digest comes from build metadata, not a tag lookup.
 
 ### Verify Signature
 
-Verify the published kit against the signing identity using `sbx`:
+Verify:
 
 ```bash
 sbx kit verify ghcr.io/filipenas/agy-sandbox:latest \
@@ -196,9 +254,7 @@ sbx kit verify ghcr.io/filipenas/agy-sandbox:latest \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-*(You can also use `cosign verify` with the identical flags).*
-
-To require valid signatures automatically when running kits:
+Require signatures when running kits:
 
 ```bash
 sbx settings set kit.trustedSigners '[{"identity":"https://github.com/FilipeNas/agy-sandbox/.github/workflows/_build.yml@refs/heads/main","issuer":"https://token.actions.githubusercontent.com"}]'

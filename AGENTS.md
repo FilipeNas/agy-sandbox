@@ -2,7 +2,7 @@
 
 Guidance for AI coding agents (and the human steering them) making changes to
 **agy-sandbox**: a [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/)
-Kit (v3) that packages the Antigravity CLI (`agy`) and a DevOps toolbelt in a
+workload kit (v3) that packages the Antigravity CLI (`agy`) and a DevOps toolbelt in a
 microVM, published to GHCR.
 
 > [!NOTE]
@@ -13,12 +13,12 @@ microVM, published to GHCR.
 ## What this repository is
 
 | Part | Where | What it is |
-|---|---|---|
+| --- | --- | --- |
 | Kit descriptor | `agy-sandbox.yaml` | v3 descriptor (`# syntax=docker/sandbox-kit:3`): kind, version, provides, capabilities (network policy, Google OAuth credential, agent context, lifecycle hook) |
 | Content recipe | `agy-sandbox.dockerfile` | Multi-stage image: Homebrew tools, `uv` tools, `agy`, dotfiles. Found by filename stem |
 | In-sandbox context | `context.md` | What the agent inside the sandbox reads. Must match what the image installs |
 | Dotfiles | `files/home/` | Copied to `/home/agent` |
-| CI/CD | `.github/workflows/` | `_build.yml` builds, pushes and cosign-signs; `build-and-push.yml` (`:latest`, `:nightly`) and `release.yml` (dated tags) call it |
+| CI/CD | `.github/workflows/` | `_build.yml` publishes one workload kit image and signs/verifies index and platform digests with native `sbx`; `build-and-push.yml` (`:latest`, `:nightly`) and `release.yml` (dated tags) call it |
 | Skills | `.agents/skills/` | Agent skills for this repo (see below) |
 
 When the upstream spec and something here disagree, the
@@ -29,7 +29,7 @@ When the upstream spec and something here disagree, the
 Read the matching skill in `.agents/skills/` and follow it:
 
 | Task | Skill |
-|---|---|
+| --- | --- |
 | Change `agy-sandbox.yaml` or start a new kit | `.agents/skills/edit-kit/SKILL.md` |
 | Add or remove a tool in the image | `.agents/skills/add-tool/SKILL.md` |
 | Build / run locally, debug a build | `.agents/skills/test-kit-locally/SKILL.md` |
@@ -39,17 +39,26 @@ Toolchain: Docker with buildx, the `sbx` CLI (including `sbx kit sign` / `sbx ki
 
 ## Verifying a change
 
-There is no test suite; verification is building and running the kit.
+`tests/image.sh` runs offline image and lifecycle-hook smoke tests. CI runs
+them on native amd64 and arm64 for pull requests and before publishing tags.
+Container tests do not replace an end-to-end microVM run.
 
 | Check | Command | When |
-|---|---|---|
-| Descriptor validates | `docker buildx build . -f agy-sandbox.yaml --output type=cacheonly` | Every change. Fails in seconds on a bad field |
+| --- | --- | --- |
+| Descriptor validates | `docker buildx build . -f agy-sandbox.yaml --output type=cacheonly` | Every change; may execute uncached image layers |
 | Resolved declarations | `sbx kit inspect .` | Capability / policy changes |
-| Full build | `docker buildx build . -f agy-sandbox.yaml -t agy-sandbox:dev` | Dockerfile changes |
-| Runs end to end | `sbx run <path-to-this-repo> --name agy-dev <project>` | Before pushing anything that changes the image |
+| Full build | `docker buildx build . -f agy-sandbox.yaml -t agy-sandbox:dev --load` | Dockerfile changes |
+| Image smoke tests | `bash tests/image.sh agy-sandbox:dev` | Image, dotfile, context, lifecycle, or test changes |
+| MicroVM tests | `bash tests/e2e.sh` | Before pushing image changes; requires KVM and authenticated `sbx` |
 
 CI builds `linux/amd64` and `linux/arm64`; anything added must exist for
 both.
+
+E2E CI is manual, main-only and amd64, using repository variable
+`DOCKER_USERNAME` and secret `DOCKER_PAT`. It is not a publication gate;
+the full suite remains unverified after a local context-injection failure.
+Dependency scans are CI-only and report-only. Dependabot maintains action
+SHAs; Renovate maintains sbx versions/checksums and Trivy CLI versions.
 
 ## Rules
 
@@ -65,7 +74,7 @@ both.
 ## Branches
 
 `<type>/<short-description>`, lowercase and hyphenated, with a type from the
-commit conventions below — e.g. `feat/add-k9s`, `ci/cosign-signing`. No AI
+commit conventions below — e.g. `feat/add-k9s`, `ci/sbx-signing`. No AI
 tool or agent names in branch names (`claude/`, `cursor/`, `agy/`, …).
 
 ## Commits
@@ -83,9 +92,8 @@ Types: `feat`, `fix`, `docs`, `chore`, `ci`, `refactor`. Scopes: `kit`
 ```text
 feat(image): add k9s
 fix(kit): declare HTTPS_PROXY for the install hook
-ci: sign image and kit with cosign
+ci: sign workload kit with sbx
 docs(skills): add release signing notes
 ```
 
 The body explains *why* when the diff cannot.
-
