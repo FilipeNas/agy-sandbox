@@ -16,9 +16,7 @@ microVM, published to GHCR.
 | --- | --- | --- |
 | Kit descriptor | `agy-sandbox.yaml` | v3 descriptor (`# syntax=docker/sandbox-kit:3`): kind, version, provides, capabilities (network policy, Google OAuth credential, agent context, lifecycle hook) |
 | Content recipe | `agy-sandbox.dockerfile` | Multi-stage image: Homebrew tools, `uv` tools, `agy`, dotfiles. Found by filename stem |
-| In-sandbox context | `context.md` | What the agent inside the sandbox reads. Must match what the image installs |
-| Dotfiles | `files/home/` | Copied to `/home/agent` |
-| CI/CD | `.github/workflows/` | `_build.yml` publishes one workload kit image and signs/verifies index and platform digests with native `sbx`; `build-and-push.yml` (`:latest`, `:nightly`) and `release.yml` (dated tags) call it |
+| CI/CD | `.github/workflows/` | `test.yml` runs offline PR image tests; `build-and-push.yml` and `release.yml` publish through `_build-push.yml`, which runs native builds and microVM E2E tests in parallel and signs the kit (see `.github/workflows/README.md` for diagrams) |
 | Skills | `.agents/skills/` | Agent skills for this repo (see below) |
 
 When the upstream spec and something here disagree, the
@@ -54,11 +52,12 @@ Container tests do not replace an end-to-end microVM run.
 CI builds `linux/amd64` and `linux/arm64`; anything added must exist for
 both.
 
-E2E CI is manual, main-only and amd64, using repository variable
-`DOCKER_USERNAME` and secret `DOCKER_PAT`. It is not a publication gate;
-the full suite remains unverified after a local context-injection failure.
-Dependency scans are CI-only and report-only. Dependabot maintains action
-SHAs; Renovate maintains sbx versions/checksums and Trivy CLI versions.
+E2E CI runs on amd64 using repository variable `DOCKER_USERNAME` and
+secret `DOCKER_PAT`. It runs on merges to main, nightly runs, and releases,
+gating all publication: kits are only published to GHCR if all tests pass.
+Pull requests run offline native image smoke tests. Dependency scans are
+CI-only and report-only. Dependabot maintains action SHAs; Renovate maintains
+sbx versions/checksums, Trivy CLI versions, and the Alpine test image.
 
 ## Rules
 
@@ -67,7 +66,7 @@ SHAs; Renovate maintains sbx versions/checksums and Trivy CLI versions.
 - **Never push or release unprompted.** Pushing to `main` publishes `:latest`
   immediately.
 - **Don't weaken signing.** Keep `id-token: write` on callers of
-  `_build.yml`, sign by digest, and keep verification pinned to the exact
+  `_build-push.yml`, sign by digest, and keep verification pinned to the exact
   workflow identity.
 - **Pin GitHub Actions by commit SHA** with the version in a trailing comment.
 

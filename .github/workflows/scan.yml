@@ -9,6 +9,7 @@ permissions:
   contents: read
 
 env:
+  IMAGE: ghcr.io/filipenas/agy-sandbox
   TRIVY_VERSION: v0.75.0
 
 jobs:
@@ -25,9 +26,8 @@ jobs:
         id: image
         run: |
           set -euo pipefail
-          image=ghcr.io/filipenas/agy-sandbox
-          digest="$(docker buildx imagetools inspect "$image:latest" --format '{{json .Manifest}}' | jq -er '.digest')"
-          echo "ref=$image@$digest" >> "$GITHUB_OUTPUT"
+          digest="$(docker buildx imagetools inspect "${IMAGE}:latest" --format '{{json .Manifest}}' | jq -er '.digest')"
+          echo "ref=${IMAGE}@${digest}" >> "$GITHUB_OUTPUT"
 
   scan:
     name: Scan linux/${{ matrix.architecture }}
@@ -40,6 +40,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Prepare dependency reports
         env:

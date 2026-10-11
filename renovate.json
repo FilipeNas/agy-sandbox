@@ -5,7 +5,7 @@
   "customManagers": [
     {
       "customType": "regex",
-      "managerFilePatterns": ["/^\\.github/workflows/(_build|e2e)\\.yml$/"],
+      "managerFilePatterns": ["/^\\.github/workflows/_build-push\\.yml$/"],
       "matchStrings": [
         "SBX_VERSION: (?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)\\s+SBX_SHA256: (?<currentDigest>[a-f0-9]{64})"
       ],
@@ -16,7 +16,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^\\.github/workflows/(_build|scan)\\.yml$/"
+        "/^\\.github/workflows/(_build-push|scan)\\.yml$/"
       ],
       "matchStrings": [
         "TRIVY_VERSION: (?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)"
@@ -24,6 +24,16 @@
       "depNameTemplate": "aquasecurity/trivy",
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^tests/e2e\\.sh$/"],
+      "matchStrings": [
+        "alpine:(?<currentValue>[a-z0-9.-]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "depNameTemplate": "alpine",
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
     }
   ],
   "packageRules": [
@@ -36,6 +46,12 @@
       "matchPackageNames": ["aquasecurity/trivy"],
       "groupName": "Trivy scanner",
       "schedule": ["before 6am on monday"]
+    },
+    {
+      "matchPackageNames": ["alpine"],
+      "groupName": "Alpine test container",
+      "schedule": ["before 6am on monday"],
+      "pinDigests": true
     }
   ]
 }
