@@ -65,7 +65,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.platform_slug }}
           cache-to: type=gha,mode=max,scope=${{ matrix.platform_slug }}
 
-      - name: Test native image and kit metadata
+      - name: Verify kit descriptor and pull image
         env:
           BUILD_DIGEST: ${{ steps.build.outputs.digest }}
           PLATFORM: ${{ matrix.platform }}
@@ -90,7 +90,11 @@ jobs:
             ]))' "$RUNNER_TEMP/native-manifest.json" > /dev/null
           docker pull --platform "$PLATFORM" "$ref"
           test "$(docker image inspect "$ref" --format '{{.Architecture}}')" = "$architecture"
-          bash tests/image.sh "$ref"
+
+      - name: Test native image
+        env:
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+        run: bash tests/image.sh "${IMAGE}@${BUILD_DIGEST}"
 
       - name: Export digest
         run: |
@@ -165,11 +169,11 @@ jobs:
         run: |
           set -euo pipefail
           test "$(uname -m)" = x86_64
-          test -c /dev/kvm
           printf '%s\n' 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
             | sudo -n tee /etc/udev/rules.d/99-kvm4all.rules > /dev/null
           sudo -n udevadm control --reload-rules
           sudo -n udevadm trigger --name-match=kvm
+          test -c /dev/kvm
           test -r /dev/kvm
           test -w /dev/kvm
 
