@@ -15,7 +15,7 @@ env:
 jobs:
   resolve:
     name: Resolve published digest
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     outputs:
       image: ${{ steps.image.outputs.ref }}
     steps:
@@ -30,9 +30,9 @@ jobs:
           echo "ref=${IMAGE}@${digest}" >> "$GITHUB_OUTPUT"
 
   scan:
-    name: Scan linux/${{ matrix.architecture }}
+    name: Scan linux/${{ matrix.architecture }} on ubuntu-24.04-arm
     needs: resolve
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
       matrix:

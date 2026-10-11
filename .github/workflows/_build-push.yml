@@ -155,7 +155,7 @@ jobs:
           retention-days: 30
 
   e2e:
-    name: Test amd64 microVM
+    name: Test amd64 sbx microVM
     if: vars.DOCKER_USERNAME != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 45
