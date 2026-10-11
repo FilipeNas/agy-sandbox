@@ -177,6 +177,20 @@ jobs:
           test -r /dev/kvm
           test -w /dev/kvm
 
+      - name: Enable containerd image store
+        run: |
+          set -euo pipefail
+          if [ -s /etc/docker/daemon.json ]; then
+            sudo -n jq '. + {"features": {"containerd-snapshotter": true}}' /etc/docker/daemon.json \
+              | sudo -n tee /etc/docker/daemon.json.tmp > /dev/null
+            sudo -n mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
+          else
+            sudo -n mkdir -p /etc/docker
+            echo '{"features": {"containerd-snapshotter": true}}' | sudo -n tee /etc/docker/daemon.json > /dev/null
+          fi
+          sudo -n systemctl restart docker
+          docker info -f '{{ .DriverStatus }}'
+
       - name: Install full Docker Sandboxes runtime
         env:
           SBX_VERSION: v0.47.0
