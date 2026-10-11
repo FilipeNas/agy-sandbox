@@ -11,9 +11,11 @@ cleanup() {
   exit_code=$?
   trap - EXIT
   for name in "${names[@]}"; do
-    if ! timeout 120 sbx rm --force "$name"; then
-      printf 'Cleanup failed for sandbox %s\n' "$name" >&2
-      exit_code=1
+    if sbx inspect "$name" >/dev/null 2>&1; then
+      if ! timeout 120 sbx rm --force "$name"; then
+        printf 'Cleanup failed for sandbox %s\n' "$name" >&2
+        exit_code=1
+      fi
     fi
   done
   rm -rf "$fixture"
@@ -23,6 +25,11 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+# Ensure global network policy is initialized before creating sandboxes
+sbx policy init allow-all 2>/dev/null || true
+sbx settings set kit.allowedSources '["docker.io/","ghcr.io/filipenas/"]' 2>/dev/null || true
+
 prefix="agy-e2e-$(date +%s)-$$"
 mkdir "$fixture/workspace"
 git -C "$fixture/workspace" init -q

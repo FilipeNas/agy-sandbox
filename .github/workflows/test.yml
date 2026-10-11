@@ -1,5 +1,7 @@
 name: test
 
+# Runs on pull requests to validate native images across architectures.
+
 on:
   pull_request:
   workflow_dispatch:
@@ -8,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: image-tests-${{ github.ref }}
+  group: test-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -19,13 +21,17 @@ jobs:
       matrix:
         include:
           - platform: linux/amd64
+            platform_slug: linux-amd64
             runner: ubuntu-24.04
           - platform: linux/arm64
+            platform_slug: linux-arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Lint test scripts
         run: shellcheck tests/*.sh
@@ -41,8 +47,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           load: true
           tags: agy-sandbox:test
-          cache-from: type=gha,scope=${{ matrix.runner }}-test
-          cache-to: type=gha,mode=max,scope=${{ matrix.runner }}-test
+          cache-from: type=gha,scope=${{ matrix.platform_slug }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform_slug }}
 
       - name: Test native image
         run: bash tests/image.sh agy-sandbox:test

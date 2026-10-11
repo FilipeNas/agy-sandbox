@@ -1,7 +1,9 @@
 name: release
 
-# Manual, main-only release: allocate <UTC date>.<counter>, publish and sign
-# that tag plus latest through _build.yml, then create the GitHub release.
+# Manual, main-only release:
+# 1. Allocate <UTC date>.<counter> version.
+# 2. Build, test (image + microVM E2E in parallel), sign, and publish via _build-push.yml.
+# 3. Create the GitHub release and git tag.
 # Concurrency serializes the entire chain so version allocation cannot race.
 
 on:
@@ -14,7 +16,7 @@ concurrency:
 permissions:
   contents: write # create the tag + GitHub Release
   packages: write # push workload kit to GHCR
-  id-token: write # keyless sbx signing in _build.yml
+  id-token: write # keyless sbx signing in _build-push.yml
 
 env:
   IMAGE: ghcr.io/filipenas/agy-sandbox
@@ -45,7 +47,7 @@ jobs:
   publish:
     name: Publish release kit
     needs: version
-    uses: ./.github/workflows/_build.yml
+    uses: ./.github/workflows/_build-push.yml
     with:
       tags: ${{ needs.version.outputs.version }},latest
     secrets: inherit
@@ -57,6 +59,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Create tag ${{ needs.version.outputs.version }} + GitHub Release
         env:

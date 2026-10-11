@@ -187,10 +187,9 @@ docker buildx history logs <build-id>
 | --- | --- | --- |
 | [test.yml](.github/workflows/test.yml) | Pull request or manual | Lint scripts, build and smoke-test both native architectures; no publication |
 | [build-and-push.yml](.github/workflows/build-and-push.yml) | Push to `main`, nightly 03:00 UTC, or manual on `main` | Call the shared publisher for `latest` or `nightly,latest` |
-| [_build.yml](.github/workflows/_build.yml) | Reusable workflow call | Build, smoke-test and scan both architectures; merge, sign and verify before reporting success |
+| [_build-push.yml](.github/workflows/_build-push.yml) | Reusable workflow call | Build, smoke-test, scan both architectures and run microVM E2E in parallel; merge, sign and verify |
 | [release.yml](.github/workflows/release.yml) | Manual on `main` | Allocate a dated version, await the shared publisher, then create the GitHub release |
 | [scan.yml](.github/workflows/scan.yml) | Daily 07:00 UTC or manual | Resolve `latest` once; rescan both platforms without publishing |
-| [e2e.yml](.github/workflows/e2e.yml) | Manual on `main` | Test mounted and mountless amd64 microVMs; independent of publication |
 
 ### Image Tests
 
@@ -218,9 +217,7 @@ For the manual **end-to-end** workflow on `main`, configure repository Actions c
 - Variable `DOCKER_USERNAME`: your Docker ID.
 - Secret `DOCKER_PAT`: Docker PAT with at least Read scope.
 
-CI uses hosted amd64 with KVM and a checksum-pinned full sbx runtime; arm64 is covered by image tests only. Login follows [Docker's headless automation](https://docs.docker.com/ai/sandboxes/workflows/automation/), with logout afterwards. The Docker PAT does not authenticate Google, and no authenticated AI requests are made.
-
-E2E is independent of publication. The full suite remains unverified: local `sbx` v0.46.0 fails the injected-context check.
+In CI, E2E runs on hosted amd64 with KVM and a checksum-pinned full sbx runtime (arm64 is covered by image tests). Tests run concurrently with multi-arch builds in `_build-push.yml` on merges to `main`, nightly runs, and releases, strictly gating publication: kits are only pushed and signed if all image and microVM tests pass. Login uses headless Docker authentication (`DOCKER_USERNAME` / `DOCKER_PAT`) with automatic logout. For CI/CD architecture diagrams and execution flows, see [.github/workflows/README.md](.github/workflows/README.md).
 
 ### Dependency Scanning
 
@@ -250,14 +247,14 @@ Verify:
 
 ```bash
 sbx kit verify ghcr.io/filipenas/agy-sandbox:latest \
-  --certificate-identity 'https://github.com/FilipeNas/agy-sandbox/.github/workflows/_build.yml@refs/heads/main' \
+  --certificate-identity 'https://github.com/FilipeNas/agy-sandbox/.github/workflows/_build-push.yml@refs/heads/main' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
 Require signatures when running kits:
 
 ```bash
-sbx settings set kit.trustedSigners '[{"identity":"https://github.com/FilipeNas/agy-sandbox/.github/workflows/_build.yml@refs/heads/main","issuer":"https://token.actions.githubusercontent.com"}]'
+sbx settings set kit.trustedSigners '[{"identity":"https://github.com/FilipeNas/agy-sandbox/.github/workflows/_build-push.yml@refs/heads/main","issuer":"https://token.actions.githubusercontent.com"}]'
 sbx settings set kit.requireSignature true
 ```
 

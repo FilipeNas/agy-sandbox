@@ -7,7 +7,7 @@ description: >-
   version of the kit.
 ---
 
-All publishing builds go through `.github/workflows/_build.yml` (multi-arch, push by
+All publishing builds go through `.github/workflows/_build-push.yml` (multi-arch, push by
 digest, then a manifest list, then sign). It publishes one workload kit image:
 `ghcr.io/filipenas/agy-sandbox`. The YAML frontend embeds the descriptor in
 that image; no separate kit repository is needed.
@@ -26,7 +26,7 @@ So merging to `main` is enough to update `:latest`.
 Publishing builds smoke-test and scan each native digest before merging tags.
 CI-only Trivy scans produce vulnerability reports and SBOMs; findings are
 report-only, scanner failures block publication. `scan.yml` rescans `latest`
-daily at 07:00 UTC or manually. E2E is separate and manual, not a release gate.
+daily at 07:00 UTC or manually. In `_build-push.yml`, native builds and microVM E2E tests run in parallel, gating tag publication and signing (see `.github/workflows/README.md` for diagrams).
 
 ## Dated release
 
@@ -52,7 +52,7 @@ Rekor), using ambient GitHub Actions OIDC without long-lived signing keys:
   `sbx kit sign` has no recursive flag, so CI enumerates the platform digests
   explicitly, excluding build-attestation manifests.
 - Certificate identity is the reusable workflow at the caller's ref:
-  `https://github.com/FilipeNas/agy-sandbox/.github/workflows/_build.yml@refs/heads/main`
+  `https://github.com/FilipeNas/agy-sandbox/.github/workflows/_build-push.yml@refs/heads/main`
 - The job runs `sbx kit verify` right after each signature; a failure there
   fails the run.
 
@@ -62,19 +62,19 @@ Verify a published tag with `sbx`:
 
 ```bash
 sbx kit verify ghcr.io/filipenas/agy-sandbox:latest \
-  --certificate-identity 'https://github.com/FilipeNas/agy-sandbox/.github/workflows/_build.yml@refs/heads/main' \
+  --certificate-identity 'https://github.com/FilipeNas/agy-sandbox/.github/workflows/_build-push.yml@refs/heads/main' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
 ### Gotchas
 
-- **Every caller of `_build.yml` must grant `id-token: write`.** A reusable
+- **Every caller of `_build-push.yml` must grant `id-token: write`.** A reusable
   workflow cannot exceed its caller's permissions; without it signing fails
   with an OIDC token error. Keep it scoped to the `merge` job inside
-  `_build.yml`.
-- **The identity names `_build.yml`, not the caller** (`release.yml` /
+  `_build-push.yml`.
+- **The identity names `_build-push.yml`, not the caller** (`release.yml` /
   `build-and-push.yml`), because Fulcio uses the job's workflow ref. Renaming
-  or moving `_build.yml`, renaming the repo, or building from another branch
+  or moving `_build-push.yml`, renaming the repo, or building from another branch
   changes the identity — update the README and this skill.
 - **Never loosen verification to an owner-wide regexp** — it would accept a
   signature from any workflow in the account.
