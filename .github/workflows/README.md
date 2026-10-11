@@ -10,6 +10,7 @@ The CI/CD pipeline uses an isolated, layered architecture:
 - **`release.yml`**: Triggers dated release versions (`YYYY-MM-DD.<counter>`), publishes, and creates GitHub Releases.
 - **`_build-push.yml`**: Reusable core workflow that builds multi-arch images, runs microVM E2E tests in parallel, gates publication on both passing, and signs the kit with Sigstore via `sbx`.
 - **`scan.yml`**: Scheduled daily dependency vulnerability and SBOM audit of the published `:latest` image.
+- **`cleanup-packages.yml`**: Scheduled daily pruning of old GHCR images (keeps the 2 newest images, `:latest`, and the two latest date release versions).
 
 ```mermaid
 flowchart TD
@@ -18,6 +19,7 @@ flowchart TD
         PushMain["Push to main"]
         Nightly["Nightly Cron (03:00 UTC)"]
         RelDispatch["Manual Release Dispatch"]
+        CleanupCron["Cleanup Cron (05:00 UTC)"]
         ScanCron["Daily Scan (07:00 UTC)"]
     end
 
@@ -25,6 +27,7 @@ flowchart TD
         TestWf["test.yml"]
         BuildPushWf["build-and-push.yml"]
         ReleaseWf["release.yml"]
+        CleanupWf["cleanup-packages.yml"]
         ScanWf["scan.yml"]
     end
 
@@ -48,12 +51,14 @@ flowchart TD
     PushMain --> BuildPushWf
     Nightly --> BuildPushWf
     RelDispatch --> ReleaseWf
+    CleanupCron --> CleanupWf
     ScanCron --> ScanWf
 
     BuildPushWf -->|tags: latest or nightly,latest| Core
     ReleaseWf -->|tags: YYYY-MM-DD.N,latest| Core
     Core --> GHCR
     ScanWf -.->|audits published digest| GHCR
+    CleanupWf -.->|prunes old images| GHCR
 ```
 
 ---
@@ -66,6 +71,7 @@ flowchart TD
 | **Build & Push** | [`build-and-push.yml`](build-and-push.yml) | `push` (`main`), cron (`0 3 * * *`), `workflow_dispatch` | Yes | Yes (`:latest`, `:nightly`) | Calls `_build-push.yml` to publish `:latest` on main pushes, or `:nightly,latest` on scheduled runs. |
 | **Release** | [`release.yml`](release.yml) | `workflow_dispatch` (on `main`) | Yes | Yes (`:<version>,latest`) | Computes `<UTC date>.<counter>`, publishes via `_build-push.yml`, and creates a GitHub Release and git tag. |
 | **Build, Test & Sign** | [`_build-push.yml`](_build-push.yml) | `workflow_call` (reusable) | Yes | Yes (custom tags) | The core build pipeline. Builds native images, runs microVM E2E tests concurrently, gates publishing, and signs with Sigstore. |
+| **Cleanup Packages** | [`cleanup-packages.yml`](cleanup-packages.yml) | cron (`0 5 * * *`), `workflow_dispatch` | No | No (deletes old) | Prunes old GHCR container packages at 05:00 UTC, preserving the 2 newest images, `:latest`, and the two latest date release versions. |
 | **Dependency Scan** | [`scan.yml`](scan.yml) | cron (`0 7 * * *`), `workflow_dispatch` | No | No | Resolves published `:latest` digest and runs Trivy vulnerability scanners + CycloneDX SBOM generation. |
 
 ---

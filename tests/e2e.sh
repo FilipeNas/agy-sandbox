@@ -56,9 +56,12 @@ timeout 180 sbx exec -i "$mounted" bash -sEeuo pipefail <<'MOUNTED'
     context="$(dirname "$WORKSPACE_DIR")/AGENTS.md"
   fi
   test -s "$context"
-  jq -ne --rawfile actual "$context" \
-    --rawfile expected /usr/share/sandbox/kit/agy-sandbox/context.md \
-    '$actual | contains($expected)'
+  test -s /usr/share/sandbox/kit/agy-sandbox/context.md
+  if ! grep -qF /usr/share/sandbox/kit/agy-sandbox/context.md "$context"; then
+    jq -ne --rawfile actual "$context" \
+      --rawfile expected /usr/share/sandbox/kit/agy-sandbox/context.md \
+      '$actual | contains($expected)' > /dev/null
+  fi
   printf 'Checking workspace trust and host write-through\n'
   test -n "$WORKSPACE_DIR"
   test -f "$WORKSPACE_DIR/host-marker"

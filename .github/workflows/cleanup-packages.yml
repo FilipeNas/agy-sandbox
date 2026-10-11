@@ -1,0 +1,79 @@
+name: cleanup-packages
+
+# Cleans up old container image packages in GHCR:
+# - Runs daily at 05:00 UTC (or manually via workflow_dispatch).
+# - Keeps the 2 most recent images (keep-n-tagged: 2).
+# - Always preserves the 'latest' tag and the 2 latest date tag releases (YYYY-MM-DD.N).
+# - Deletes untagged and orphaned images safely.
+
+on:
+  schedule:
+    - cron: "0 5 * * *" # daily at 05:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (simulate deletion without modifying registry)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  PACKAGE: agy-sandbox
+
+jobs:
+  cleanup:
+    name: Clean old package versions
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Resolve protected tags (latest + two date releases)
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # 1. Fetch release tags from GitHub Releases
+          gh_releases="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName,isDraft \
+            --jq '[.[] | select(.isDraft == false) | .tagName] | .[]' 2>/dev/null || true)"
+
+          # 2. Fetch tags from GHCR package versions
+          owner="${GITHUB_REPOSITORY%/*}"
+          owner_type="$(gh api "users/${owner}" --jq '.type' 2>/dev/null || echo "User")"
+          if [ "$owner_type" = "Organization" ]; then
+            endpoint="orgs/${owner}/packages/container/${PACKAGE}/versions"
+          else
+            endpoint="users/${owner}/packages/container/${PACKAGE}/versions"
+          fi
+
+          ghcr_tags="$(gh api "$endpoint" --paginate --jq '.[].metadata.container.tags[]?' 2>/dev/null || true)"
+
+          # 3. Combine, filter date format (YYYY-MM-DD.N), preserve order, deduplicate, and take top 2
+          date_tags="$(printf '%s\n%s\n' "$gh_releases" "$ghcr_tags" \
+            | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9]+$' \
+            | awk '!seen[$0]++' \
+            | head -n 2 \
+            | paste -sd, - || true)"
+
+          # 4. Form exclude-tags: always include 'latest', plus the two date tag releases
+          exclude_tags="latest"
+          if [ -n "$date_tags" ]; then
+            exclude_tags="latest,${date_tags}"
+          fi
+
+          echo "Protected tags: ${exclude_tags}"
+          echo "exclude_tags=${exclude_tags}" >> "$GITHUB_OUTPUT"
+
+      - name: Prune old images in GHCR
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          package: ${{ env.PACKAGE }}
+          keep-n-tagged: 2
+          exclude-tags: ${{ steps.resolve.outputs.exclude_tags }}
+          delete-untagged: true
+          delete-orphaned-images: true
+          validate: true
+          dry-run: ${{ github.event.inputs.dry_run || false }}
+          token: ${{ secrets.GITHUB_TOKEN }}
