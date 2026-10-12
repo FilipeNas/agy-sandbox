@@ -71,7 +71,7 @@ timeout 180 sbx exec -i "$mounted" bash -sEeuo pipefail <<'MOUNTED'
   printf "sandbox write\n" > "$WORKSPACE_DIR/sandbox-marker"
   printf 'Checking nested Docker and network policy\n'
   docker info > /dev/null
-  docker run --rm alpine:3.23@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0 echo nested-docker-ok
+  docker run --rm alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 echo nested-docker-ok
   curl -fsS --max-time 30 https://docs.docker.com/ -o /dev/null
   if curl -fsS --max-time 15 https://example.com/ -o /dev/null; then
     printf "Network deny rule was not enforced\n" >&2
