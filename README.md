@@ -223,12 +223,11 @@ In CI, E2E runs on hosted amd64 with KVM and a checksum-pinned full sbx runtime 
 
 CI scans both platforms by immutable digest using SHA-pinned `aquasecurity/trivy-action` and an explicit CLI version. Scans run before publication and daily at 07:00 UTC or manually against resolved `latest`, filtering to fixable `CRITICAL` and `HIGH` OS package vulnerabilities (`vuln-type: os`, `ignore-unfixed: true`).
 
-Each platform's `dependency-reports-*` artifact contains:
+Each platform produces a standalone `sbom-linux-*.cdx.json` CycloneDX inventory artifact alongside `dependency-reports-*`, which contains:
 
 - `vulnerabilities.json`: findings, affected packages, and available fixes (JSON).
 - `vulnerabilities.txt`: human-readable Trivy table report.
 - `vulnerabilities.sarif`: SARIF report uploaded to GitHub Security (Code scanning).
-- `sbom.cdx.json`: CycloneDX component inventory.
 - `image.txt`: the scanned immutable reference.
 
 Each scan also renders a human-readable Markdown summary table directly on the GitHub Actions run page (`$GITHUB_STEP_SUMMARY`) and uploads SARIF results to the repository's **Security → Code scanning** tab. Findings are report-only; scanner/database failures fail the job. Reports are retained for 7 days. Third-party Homebrew and standalone binaries such as `agy` are excluded from OS vulnerability scans (though inventoried in the SBOM); findings do not establish exploitability or safety.

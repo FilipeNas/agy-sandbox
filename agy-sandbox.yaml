@@ -1,7 +1,8 @@
 # syntax=docker/sandbox-kit:3
 schemaVersion: '3'
 displayName: agy-sandbox
-description: Docker Sandbox workload kit for Google Antigravity CLI (agy)
+description: Docker Sandboxes (sbx v3) workload kit that runs the Google Antigravity CLI (agy) with Docker-in-Docker and a preinstalled DevOps and Cloud toolbelt in an isolated microVM.
+sourceUrl: https://github.com/FilipeNas/agy-sandbox
 author: Filipe Nascimento <piposantos1@hotmail.com>
 
 kind: workload
