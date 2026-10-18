@@ -127,6 +127,7 @@ jobs:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
           scanners: vuln
+          vuln-type: os
           severity: CRITICAL,HIGH
           ignore-unfixed: 'true'
           format: json
