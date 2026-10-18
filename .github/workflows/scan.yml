@@ -1,4 +1,5 @@
-name: dependency-scan
+name: Dependency Scan
+run-name: ${{ github.event_name == 'schedule' && 'Daily Dependency Scan' || 'Manual Dependency Scan' }}
 
 on:
   schedule:
@@ -31,7 +32,7 @@ jobs:
           echo "ref=${IMAGE}@${digest}" >> "$GITHUB_OUTPUT"
 
   scan:
-    name: Scan linux/${{ matrix.architecture }} on ubuntu-24.04-arm
+    name: Scan linux/${{ matrix.architecture }}
     needs: resolve
     runs-on: ubuntu-24.04-arm
     strategy:

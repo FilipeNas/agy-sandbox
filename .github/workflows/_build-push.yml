@@ -1,4 +1,4 @@
-name: _build-push
+name: Build, Test and Sign
 
 # Shared publisher for build-and-push.yml and release.yml.
 # Native builds -> image tests -> dependency reports -> merge -> sign and verify.

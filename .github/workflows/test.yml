@@ -1,9 +1,18 @@
-name: test
+name: Test
+run-name: ${{ github.event_name == 'workflow_dispatch' && 'Manual Image Test' || github.event.pull_request.title }}
 
 # Runs on pull requests to validate native images across architectures.
+# Skips automatically when changes only touch CI or documentation.
 
 on:
   pull_request:
+    paths:
+      - "agy-sandbox.yaml"
+      - "agy-sandbox.dockerfile"
+      - "context.md"
+      - "files/**"
+      - ".dockerignore"
+      - "tests/**"
   workflow_dispatch:
 
 permissions:
