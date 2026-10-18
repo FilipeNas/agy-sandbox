@@ -67,10 +67,10 @@ flowchart TD
 
 | Workflow | File | Trigger | Runs E2E? | Publishes to GHCR? | Description |
 |---|---|---|---|---|---|
-| **Test** | [`test.yml`](test.yml) | `pull_request`, `workflow_dispatch` | No | No | Builds native `amd64` and `arm64` images locally (`load: true`), hits warm cache from `main`, and runs offline smoke tests (`tests/image.sh`). |
-| **Build & Push** | [`build-and-push.yml`](build-and-push.yml) | `push` (`main`), cron (`0 3 * * *`), `workflow_dispatch` | Yes | Yes (`:latest`, `:nightly`) | Calls `_build-push.yml` to publish `:latest` on main pushes, or `:nightly,latest` on scheduled runs. |
+| **Test** | [`test.yml`](test.yml) | `pull_request` (image/test paths), `workflow_dispatch` | No | No | Builds native `amd64` and `arm64` images locally (`load: true`), hits warm cache from `main`, and runs offline smoke tests (`tests/image.sh`). Skips CI/docs-only PRs. |
+| **Build and Push** | [`build-and-push.yml`](build-and-push.yml) | `push` (`main`), cron (`0 3 * * *`), `workflow_dispatch` | Yes | Yes (`:latest`, `:nightly`) | Calls `_build-push.yml` to publish `:latest` on main pushes, or `:nightly,latest` on scheduled runs (`Nightly Run`). |
 | **Release** | [`release.yml`](release.yml) | `workflow_dispatch` (on `main`) | Yes | Yes (`:<version>,latest`) | Computes `<UTC date>.<counter>`, publishes via `_build-push.yml`, and creates a GitHub Release and git tag. |
-| **Build, Test & Sign** | [`_build-push.yml`](_build-push.yml) | `workflow_call` (reusable) | Yes | Yes (custom tags) | The core build pipeline. Builds native images, runs microVM E2E tests concurrently, gates publishing, and signs with Sigstore. |
+| **Build, Test and Sign** | [`_build-push.yml`](_build-push.yml) | `workflow_call` (reusable) | Yes | Yes (custom tags) | The core build pipeline. Builds native images, runs microVM E2E tests concurrently, gates publishing, and signs with Sigstore. |
 | **Cleanup Packages** | [`cleanup-packages.yml`](cleanup-packages.yml) | cron (`0 5 * * *`), `workflow_dispatch` | No | No (deletes old) | Prunes old GHCR container packages at 05:00 UTC, preserving the 2 newest images, `:latest`, and the two latest date release versions. |
 | **Dependency Scan** | [`scan.yml`](scan.yml) | cron (`0 7 * * *`), `workflow_dispatch` | No | No | Resolves published `:latest` digest, runs Trivy vulnerability + CycloneDX SBOM scans, renders a Markdown table in the Actions summary, uploads SARIF to GitHub Security, and retains artifacts for 7 days. |
 
