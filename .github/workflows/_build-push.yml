@@ -193,9 +193,18 @@ jobs:
           skip-setup-trivy: 'true'
           image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
           format: cyclonedx
-          output: scan-results/sbom.cdx.json
+          output: sbom-${{ matrix.platform_slug }}.cdx.json
           exit-code: '0'
           timeout: 15m
+
+      - name: Upload SBOM
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-${{ matrix.platform_slug }}.cdx.json
+          path: sbom-${{ matrix.platform_slug }}.cdx.json
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload dependency reports
         if: ${{ !cancelled() }}
@@ -334,6 +343,7 @@ jobs:
         working-directory: /tmp/digests
         env:
           PUBLISH_TAGS: ${{ inputs.tags }}
+          REPO_URL: https://github.com/${{ github.repository }}
         run: |
           set -euo pipefail
           args=()
@@ -343,6 +353,11 @@ jobs:
             [ -n "$tag" ] && args+=(-t "${IMAGE}:${tag}")
           done
           test "${#args[@]}" -gt 0
+          args+=(
+            --annotation "index:org.opencontainers.image.title=agy-sandbox"
+            --annotation "index:org.opencontainers.image.description=Docker Sandboxes (sbx v3) workload kit that runs the Google Antigravity CLI (agy) with Docker-in-Docker and a preinstalled DevOps and Cloud toolbelt in an isolated microVM."
+            --annotation "index:org.opencontainers.image.source=${REPO_URL}"
+          )
           sources=()
           for digest_file in *; do
             sources+=("${IMAGE}@sha256:${digest_file}")

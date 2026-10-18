@@ -127,9 +127,18 @@ jobs:
           skip-setup-trivy: 'true'
           image-ref: ${{ needs.resolve.outputs.image }}
           format: cyclonedx
-          output: scan-results/sbom.cdx.json
+          output: sbom-linux-${{ matrix.architecture }}.cdx.json
           exit-code: '0'
           timeout: 15m
+
+      - name: Upload SBOM
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-linux-${{ matrix.architecture }}.cdx.json
+          path: sbom-linux-${{ matrix.architecture }}.cdx.json
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload reports
         if: ${{ !cancelled() }}

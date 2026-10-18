@@ -64,6 +64,9 @@ RUN bash -o pipefail -c 'curl -fsSL https://antigravity.google/cli/install.sh | 
 
 # ── final ─────────────────────────────────────────────────────────────────────
 FROM system AS final
+LABEL org.opencontainers.image.title="agy-sandbox" \
+      org.opencontainers.image.description="Docker Sandboxes (sbx v3) workload kit that runs the Google Antigravity CLI (agy) with Docker-in-Docker and a preinstalled DevOps and Cloud toolbelt in an isolated microVM." \
+      org.opencontainers.image.source="https://github.com/FilipeNas/agy-sandbox"
 COPY --from=brew    --chown=agent:agent /home/linuxbrew/.linuxbrew     /home/linuxbrew/.linuxbrew
 COPY --from=pytools --chown=agent:agent /home/agent/.local             /home/agent/.local
 COPY --from=agy     --chown=agent:agent /home/agent/.local/bin/agy     /home/agent/.local/bin/agy
