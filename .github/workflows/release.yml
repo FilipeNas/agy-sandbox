@@ -16,6 +16,7 @@ concurrency:
 permissions:
   contents: write # create the tag + GitHub Release
   packages: write # push workload kit to GHCR
+  security-events: write # upload Trivy SARIF in _build-push.yml
   id-token: write # keyless sbx signing in _build-push.yml
 
 env:

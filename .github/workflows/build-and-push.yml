@@ -16,6 +16,7 @@ on:
 permissions:
   contents: read
   packages: write
+  security-events: write
   id-token: write # keyless sbx signing in _build-push.yml
 
 jobs:
