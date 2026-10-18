@@ -221,7 +221,7 @@ In CI, E2E runs on hosted amd64 with KVM and a checksum-pinned full sbx runtime 
 
 ### Dependency Scanning
 
-CI scans both platforms by immutable digest using SHA-pinned `aquasecurity/trivy-action` and an explicit CLI version. Scans run before publication and daily at 07:00 UTC or manually against resolved `latest`.
+CI scans both platforms by immutable digest using SHA-pinned `aquasecurity/trivy-action` and an explicit CLI version. Scans run before publication and daily at 07:00 UTC or manually against resolved `latest`, filtering to fixable `CRITICAL` and `HIGH` OS package vulnerabilities (`vuln-type: os`, `ignore-unfixed: true`).
 
 Each platform's `dependency-reports-*` artifact contains:
 
@@ -231,7 +231,7 @@ Each platform's `dependency-reports-*` artifact contains:
 - `sbom.cdx.json`: CycloneDX component inventory.
 - `image.txt`: the scanned immutable reference.
 
-Each scan also renders a human-readable Markdown summary table directly on the GitHub Actions run page (`$GITHUB_STEP_SUMMARY`) and uploads SARIF results to the repository's **Security → Code scanning** tab. Findings are report-only; scanner/database failures fail the job. Reports are retained for 7 days. Homebrew and standalone binaries such as `agy` may have incomplete coverage; findings do not establish exploitability or safety.
+Each scan also renders a human-readable Markdown summary table directly on the GitHub Actions run page (`$GITHUB_STEP_SUMMARY`) and uploads SARIF results to the repository's **Security → Code scanning** tab. Findings are report-only; scanner/database failures fail the job. Reports are retained for 7 days. Third-party Homebrew and standalone binaries such as `agy` are excluded from OS vulnerability scans (though inventoried in the SBOM); findings do not establish exploitability or safety.
 
 Dependabot updates action SHAs weekly. Renovate groups sbx version/checksum updates and Trivy CLI versions, without duplicating Actions PRs. Neither automerges. Install the [Renovate GitHub App](https://github.com/apps/renovate) to activate it; other container digests still need explicit updates.
 
