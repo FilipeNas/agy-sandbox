@@ -72,7 +72,7 @@ flowchart TD
 | **Release** | [`release.yml`](release.yml) | `workflow_dispatch` (on `main`) | Yes | Yes (`:<version>,latest`) | Computes `<UTC date>.<counter>`, publishes via `_build-push.yml`, and creates a GitHub Release and git tag. |
 | **Build, Test & Sign** | [`_build-push.yml`](_build-push.yml) | `workflow_call` (reusable) | Yes | Yes (custom tags) | The core build pipeline. Builds native images, runs microVM E2E tests concurrently, gates publishing, and signs with Sigstore. |
 | **Cleanup Packages** | [`cleanup-packages.yml`](cleanup-packages.yml) | cron (`0 5 * * *`), `workflow_dispatch` | No | No (deletes old) | Prunes old GHCR container packages at 05:00 UTC, preserving the 2 newest images, `:latest`, and the two latest date release versions. |
-| **Dependency Scan** | [`scan.yml`](scan.yml) | cron (`0 7 * * *`), `workflow_dispatch` | No | No | Resolves published `:latest` digest and runs Trivy vulnerability scanners + CycloneDX SBOM generation. |
+| **Dependency Scan** | [`scan.yml`](scan.yml) | cron (`0 7 * * *`), `workflow_dispatch` | No | No | Resolves published `:latest` digest, runs Trivy vulnerability + CycloneDX SBOM scans, renders a Markdown table in the Actions summary, uploads SARIF to GitHub Security, and retains artifacts for 7 days. |
 
 ---
 
