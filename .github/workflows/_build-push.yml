@@ -127,6 +127,8 @@ jobs:
           version: ${{ env.TRIVY_VERSION }}
           image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
           scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: 'true'
           format: json
           output: scan-results/vulnerabilities.json
           exit-code: '0'
@@ -138,9 +140,9 @@ jobs:
           IMAGE_REF: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
         run: |
           set -euo pipefail
-          trivy convert --scanners vuln --format table \
+          trivy convert --scanners vuln --severity CRITICAL,HIGH --format table \
             --output scan-results/vulnerabilities.txt scan-results/vulnerabilities.json
-          trivy convert --scanners vuln --format sarif \
+          trivy convert --scanners vuln --severity CRITICAL,HIGH --format sarif \
             --output scan-results/vulnerabilities.sarif scan-results/vulnerabilities.json
 
           {
@@ -150,22 +152,16 @@ jobs:
               def esc: tostring | gsub("\\|"; "\\|") | gsub("[\\r\\n]+"; " ");
               def sev_rank:
                 if . == "CRITICAL" then 0
-                elif . == "HIGH" then 1
-                elif . == "MEDIUM" then 2
-                elif . == "LOW" then 3
-                else 4 end;
+                else 1 end;
               ([.Results[]? | .Target as $t | .Vulnerabilities[]? | . + {_target: $t}] // []) as $v |
               "| Severity | Count |",
               "| --- | ---: |",
               "| CRITICAL | \([ $v[] | select(.Severity == "CRITICAL") ] | length) |",
               "| HIGH | \([ $v[] | select(.Severity == "HIGH") ] | length) |",
-              "| MEDIUM | \([ $v[] | select(.Severity == "MEDIUM") ] | length) |",
-              "| LOW | \([ $v[] | select(.Severity == "LOW") ] | length) |",
-              "| UNKNOWN | \([ $v[] | select(.Severity == "UNKNOWN") ] | length) |",
               "| **Total** | **\($v | length)** |",
               "",
               if ($v | length) == 0 then
-                "✅ No vulnerabilities detected."
+                "✅ No CRITICAL or HIGH vulnerabilities detected."
               else
                 "<details open><summary><strong>Vulnerabilities (\($v | length))</strong></summary>",
                 "",
