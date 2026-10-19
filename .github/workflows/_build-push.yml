@@ -20,7 +20,7 @@ permissions:
 
 env:
   IMAGE: ghcr.io/filipenas/agy-sandbox
-  TRIVY_VERSION: v0.75.0
+  TRIVY_VERSION: v0.76.0
 
 jobs:
   build:
