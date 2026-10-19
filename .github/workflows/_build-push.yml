@@ -55,6 +55,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # docker/sandbox-kit:3 (v3.0.0-m.8) drops CacheImports when staging
+      # agent-context@1 contentFile (stageGuidance wraps the lazy dockerfile.v0
+      # ref in a new SolveRequest with CacheImports: nil before evaluation).
+      # Pre-solving agy-sandbox.dockerfile with type=cacheonly imports the GHA
+      # cache into the local BuildKit worker so the kit build hits CACHED.
+      # Skipped on scheduled nightly runs so upstream packages rebuild fresh.
+      - name: Warm BuildKit cache
+        if: github.event_name != 'schedule'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: agy-sandbox.dockerfile
+          platforms: ${{ matrix.platform }}
+          outputs: type=cacheonly
+          cache-from: type=gha,scope=${{ matrix.platform_slug }}
+
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -63,6 +79,7 @@ jobs:
           file: agy-sandbox.yaml
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          no-cache: ${{ github.event_name == 'schedule' }}
           cache-from: type=gha,scope=${{ matrix.platform_slug }}
           cache-to: type=gha,mode=max,scope=${{ matrix.platform_slug }}
 
@@ -290,7 +307,7 @@ jobs:
 
       - name: Sign out on ephemeral runner
         if: ${{ always() && steps.login.outcome == 'success' }}
-        run: sbx logout --yes
+        run: sbx logout --force
 
   merge:
     name: Publish and sign multi-platform kit

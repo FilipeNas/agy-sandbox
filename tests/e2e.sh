@@ -40,7 +40,7 @@ printf 'Creating mounted sandbox: %s\n' "$mounted"
 names+=("$mounted")
 timeout 900 sbx create --name "$mounted" --cpus 2 --memory 4g \
   --deny-network example.com "$kit" "$fixture/workspace"
-timeout 120 sbx run --detached --name "$mounted"
+timeout 120 sbx run --detach --name "$mounted"
 timeout 180 sbx exec -i "$mounted" bash -sEeuo pipefail <<'MOUNTED'
   trap 'printf "Mounted sandbox test failed at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 
@@ -84,7 +84,7 @@ mountless="$prefix-mountless"
 printf 'Creating mountless sandbox: %s\n' "$mountless"
 names+=("$mountless")
 timeout 900 sbx create --name "$mountless" --cpus 2 --memory 4g "$kit"
-timeout 120 sbx run --detached --name "$mountless"
+timeout 120 sbx run --detach --name "$mountless"
 timeout 120 sbx exec -i "$mountless" bash -sEeuo pipefail <<'MOUNTLESS'
   trap 'printf "Mountless sandbox test failed at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 
