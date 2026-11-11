@@ -271,8 +271,8 @@ jobs:
 
       - name: Install full Docker Sandboxes runtime
         env:
-          SBX_VERSION: v0.48.0
-          SBX_SHA256: 609a2e4b881ba9a7fd21543077e53d3b863a6b99eebee1f208e51a097ab56a05
+          SBX_VERSION: v0.53.0
+          SBX_SHA256: a8e171ed331e2485ff8d46978d7bf9e74929769acacb6759c15a0a665a3b7bb2
         run: |
           set -euo pipefail
           curl -fsSL --retry 3 \
@@ -334,8 +334,8 @@ jobs:
 
       - name: Install sbx CLI
         env:
-          SBX_VERSION: v0.48.0
-          SBX_SHA256: 83eb3a2cdebf28b1b8e3e8f5d8e964c60d8bb8323c52447ac947864fdca0fd15
+          SBX_VERSION: v0.53.0
+          SBX_SHA256: 615a8045fe4d9860d5d1bb30df0189e33b5e3deb22aef820b2947d4b0697438b
         run: |
           set -euo pipefail
           curl -fsSL --retry 3 \
