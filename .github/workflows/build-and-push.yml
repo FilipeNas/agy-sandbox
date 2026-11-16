@@ -1,15 +1,13 @@
 name: Build and Push
-run-name: ${{ github.event_name == 'schedule' && 'Nightly Run' || github.event_name == 'workflow_dispatch' && 'Manual Build and Push' || github.event.head_commit.message }}
+run-name: ${{ github.event_name == 'schedule' && 'Nightly Run' || 'Manual Build and Push' }}
 
 # Builds and publishes ghcr.io/filipenas/agy-sandbox:latest and :nightly.
 # Triggers:
-# - push to main / manual dispatch: tags 'latest'
+# - manual dispatch on main: tags 'latest' (pushes to main do not build)
 # - schedule (nightly at 03:00 UTC): tags 'nightly,latest'
 # Delegates the build, tests (image + microVM E2E in parallel), and signing to _build-push.yml.
 
 on:
-  push:
-    branches: [main]
   schedule:
     - cron: "0 3 * * *" # nightly, 03:00 UTC
   workflow_dispatch:

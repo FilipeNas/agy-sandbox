@@ -18,10 +18,11 @@ that image; no separate kit repository is needed.
 
 | Trigger | Tags |
 | --- | --- |
-| push to `main` / manual dispatch on `main` | `latest` |
+| manual dispatch on `main` | `latest` |
 | nightly 03:00 UTC | `nightly`, `latest` |
 
-So merging to `main` is enough to update `:latest`.
+Merging to `main` does not build. Run `gh workflow run build-and-push.yml --ref main`
+to update `:latest` immediately, or wait for the nightly run.
 
 Publishing builds smoke-test and scan each native digest before merging tags.
 CI-only Trivy scans produce vulnerability reports and SBOMs; findings are
