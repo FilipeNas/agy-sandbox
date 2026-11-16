@@ -6,7 +6,7 @@ This directory contains the GitHub Actions workflows that test, build, publish, 
 
 The CI/CD pipeline uses an isolated, layered architecture:
 - **`test.yml`**: Fast offline image validation on PRs without registry access.
-- **`build-and-push.yml`**: Triggers publishing of `:latest` (on `main`) and `:nightly` (cron).
+- **`build-and-push.yml`**: Triggers publishing of `:latest` (manual dispatch on `main`) and `:nightly` (cron). Pushes to `main` do not build.
 - **`release.yml`**: Triggers dated release versions (`YYYY-MM-DD.<counter>`), publishes, and creates GitHub Releases.
 - **`_build-push.yml`**: Reusable core workflow that builds multi-arch images, runs microVM E2E tests in parallel, gates publication on both passing, and signs the kit with Sigstore via `sbx`.
 - **`scan.yml`**: Scheduled daily dependency vulnerability and SBOM audit of the published `:latest` image.
@@ -16,7 +16,7 @@ The CI/CD pipeline uses an isolated, layered architecture:
 flowchart TD
     subgraph Triggers["Trigger Events"]
         PR["Pull Request"]
-        PushMain["Push to main"]
+        BuildDispatch["Manual Build Dispatch (main)"]
         Nightly["Nightly Cron (03:00 UTC)"]
         RelDispatch["Manual Release Dispatch"]
         CleanupCron["Cleanup Cron (05:00 UTC)"]
@@ -48,7 +48,7 @@ flowchart TD
     end
 
     PR --> TestWf
-    PushMain --> BuildPushWf
+    BuildDispatch --> BuildPushWf
     Nightly --> BuildPushWf
     RelDispatch --> ReleaseWf
     CleanupCron --> CleanupWf
@@ -68,7 +68,7 @@ flowchart TD
 | Workflow | File | Trigger | Runs E2E? | Publishes to GHCR? | Description |
 |---|---|---|---|---|---|
 | **Test** | [`test.yml`](test.yml) | `pull_request` (image/test paths), `workflow_dispatch` | No | No | Builds native `amd64` and `arm64` images locally (`load: true`), hits warm cache from `main`, and runs offline smoke tests (`tests/image.sh`). Skips CI/docs-only PRs. |
-| **Build and Push** | [`build-and-push.yml`](build-and-push.yml) | `push` (`main`), cron (`0 3 * * *`), `workflow_dispatch` | Yes | Yes (`:latest`, `:nightly`) | Calls `_build-push.yml` to publish `:latest` on main pushes, or `:nightly,latest` on scheduled runs (`Nightly Run`). |
+| **Build and Push** | [`build-and-push.yml`](build-and-push.yml) | cron (`0 3 * * *`), `workflow_dispatch` (on `main`) | Yes | Yes (`:latest`, `:nightly`) | Calls `_build-push.yml` to publish `:latest` on manual dispatch, or `:nightly,latest` on scheduled runs (`Nightly Run`). |
 | **Release** | [`release.yml`](release.yml) | `workflow_dispatch` (on `main`) | Yes | Yes (`:<version>,latest`) | Computes `<UTC date>.<counter>`, publishes via `_build-push.yml`, and creates a GitHub Release and git tag. |
 | **Build, Test and Sign** | [`_build-push.yml`](_build-push.yml) | `workflow_call` (reusable) | Yes | Yes (custom tags) | The core build pipeline. Builds native images, runs microVM E2E tests concurrently, gates publishing, and signs with Sigstore. |
 | **Cleanup Packages** | [`cleanup-packages.yml`](cleanup-packages.yml) | cron (`0 5 * * *`), `workflow_dispatch` | No | No (deletes old) | Prunes old GHCR container packages at 05:00 UTC, preserving the 2 newest images, `:latest`, and the two latest date release versions. |

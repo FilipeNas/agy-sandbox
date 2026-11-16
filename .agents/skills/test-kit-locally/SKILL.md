@@ -45,7 +45,7 @@ to the merge job.
 
 For mounted/mountless microVM, context, workspace-trust, nested Docker and
 network checks, run `bash tests/e2e.sh`. Credential proxying remains untested.
-In CI, E2E runs on merges to `main`, nightly runs, and releases,
+In CI, E2E runs on manual builds of `main`, nightly runs, and releases,
 gating all publications before any image is pushed or tagged.
 
 ## Run it

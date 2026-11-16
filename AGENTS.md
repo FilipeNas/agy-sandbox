@@ -53,7 +53,7 @@ CI builds `linux/amd64` and `linux/arm64`; anything added must exist for
 both.
 
 E2E CI runs on amd64 using repository variable `DOCKER_USERNAME` and
-secret `DOCKER_PAT`. It runs on merges to main, nightly runs, and releases,
+secret `DOCKER_PAT`. It runs on manual builds of main, nightly runs, and releases,
 gating all publication: kits are only published to GHCR if all tests pass.
 Pull requests run offline native image smoke tests. Dependency scans are
 CI-only and report-only. Dependabot maintains action SHAs; Renovate maintains
@@ -63,7 +63,8 @@ sbx versions/checksums, Trivy CLI versions, and the Alpine test image.
 
 - **Keep `context.md` honest.** If the image gains or loses a tool, a path or a
   policy, update `context.md` in the same change.
-- **Never push or release unprompted.** Pushing to `main` publishes `:latest`
+- **Never push or release unprompted.** Pushing to `main` no longer builds, but
+  the next nightly run publishes it as `:latest`; dispatching a build publishes
   immediately.
 - **Don't weaken signing.** Keep `id-token: write` on callers of
   `_build-push.yml`, sign by digest, and keep verification pinned to the exact
